@@ -1,0 +1,190 @@
+---
+title: "pacoExample_analysis"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if (!require(pacman)) install.packages("pacman"); library(pacman)
+
+p_load(tidyverse)
+p_load_gh("FredHasselman/casnet")        # Need for center()
+
+knitr::opts_chunk$set(echo = TRUE, 
+               warning = TRUE,
+               error = TRUE,
+               cache = TRUE, 
+               collapse = TRUE,
+               eval = TRUE)
+knitr::opts_chunk$set(root.dir = ".")  # Always project root as working directory
+knitr::opts_knit$set(root.dir = ".")  # This is needed for some versions of RStudio
+
+esm_data <- read_csv("data/pacoExample.csv")
+
+esm_data <- esm_data %>% 
+  dplyr::rename(Vapaaehtoisuus = bpns1,
+                Kyvykkyys = bpns2,
+                Yhteenkuuluvuus = bpns3) %>%
+  dplyr::mutate(day = lubridate::day(responseTime),
+                date = lubridate::date(responseTime),
+                task = Task,
+                task = case_when(stringr::str_detect(task, "reading") ~ "lukeminen",
+                                 stringr::str_detect(task, "leverage points") ~ "lukeminen",
+                                 stringr::str_detect(task, "meeting") ~ "tapaaminen",
+                                 stringr::str_detect(task, "skype") ~ "tapaaminen",
+                                 stringr::str_detect(task, "network") ~ "data-analyysi",
+                                 stringr::str_detect(task, "codebook") ~ "data-analyysi",
+                                 stringr::str_detect(task, "dynamic complexity") ~ "data-analyysi",
+                                 stringr::str_detect(task, "recurrence plots") ~ "data-analyysi",
+                                 stringr::str_detect(task, "interpreting data") ~ "data-analyysi",
+                                 stringr::str_detect(task, "coding") ~ "data-analyysi",
+                                 stringr::str_detect(task, "listening") ~ "esityksen kuunteleminen",
+                                 stringr::str_detect(task, "social media") ~ "tiedonhaku",
+                                 stringr::str_detect(task, "paper") ~ "kirjoittaminen",
+                                 !is.na(task) ~ "muu",
+                                 TRUE ~ task),
+                Tarvetyydytys = ((Vapaaehtoisuus + Kyvykkyys + Yhteenkuuluvuus) / 3))
+
+                
+```
+
+```{r}
+esm_data %>% dplyr::filter(!is.na(task)) %>% 
+  mutate(Task = reorder(task, task, FUN = length)
+         # Task = forcats::fct_relevel(Task, "muu", after = Inf)
+         ) %>% 
+  dplyr::count(Task) %>% # essentially the same as dplyr::group_by(task) %>% dplyr::summarise(n = n())
+  dplyr::mutate(fraction = n / sum(n),
+                ymax = cumsum(fraction), # cumulative sum going down
+                ymin = c(0, head(ymax, n = -1))) %>% # starting from the previous value, add the next 
+  dplyr::arrange(desc(fraction)) %>% 
+  ggplot(aes(fill = Task, ymax = ymax, ymin = ymin, xmax = 9, xmin = 5)) +
+    geom_rect(colour = "grey30") +
+    coord_polar(theta = "y") +
+    xlim(c(0, 9)) +
+    theme_bw() +
+    theme(panel.grid = element_blank()) +
+    theme(axis.text = element_blank()) +
+    theme(axis.ticks = element_blank()) +
+    # theme(legend.title = element_blank()) + # This works but makes the boxes too close to the items
+    labs(x = NULL, y = NULL, title = NULL) +
+    annotate("text", x = 0, y = 0, label = paste0("Vastauksia: ", esm_data$task %>% table() %>% sum())) +
+    ggrepel::geom_label_repel(aes(label = paste(fraction %>% round(., 2) * 100, "%"), 
+                                  x = 7, y = (ymin + ymax)/2),
+                              inherit.aes = TRUE, 
+                              show.legend = FALSE,
+                              force = 0.01) +
+    guides(fill = guide_legend(reverse = TRUE, title = "Tehtävä"))
+
+```
+
+```{r}
+esm_data %>% tidyr::gather(muuttuja, arvo, Vapaaehtoisuus:Yhteenkuuluvuus) %>% 
+  dplyr::select(date, arvo, muuttuja) %>% 
+  na.omit() %>%
+  ggplot(aes(x = date, y = arvo, group = muuttuja, colour = muuttuja)) +
+  geom_smooth(span = 0.15, se = FALSE) +
+  # geom_point() +
+  labs(x = NULL) +
+  # geom_line(alpha = 0.3, size = 1.5) +
+  theme_bw()
+
+# Marking outliers, from: https://stackoverflow.com/questions/33524669/labeling-outliers-of-boxplots-in-r
+is_outlier <- function(x) {
+  return(x < quantile(x, 0.25, na.rm = TRUE) - 1.5 * IQR(x, na.rm = TRUE) | x > quantile(x, 0.75, na.rm = TRUE) + 1.5 * IQR(x, na.rm = TRUE))
+}
+
+esm_data$sdt3[15] <- 15
+
+esm_data %>%
+  dplyr::mutate(sisäinen = (sdt3 + sdt4 + sdt5) / 3,
+                ulkoinen = (sdt1 + sdt2 + sdt6) / 3,
+                outlier_ulkoinen = ifelse(is_outlier(ulkoinen), date, as.numeric(NA)),
+                outlier_ulkoinen = format(as.Date(outlier_ulkoinen, origin = '1970-01-01'), format="%d/%m"),
+                outlier_sisäinen = ifelse(is_outlier(sisäinen), date, as.numeric(NA)),
+                outlier_sisäinen = format(as.Date(outlier_sisäinen, origin = '1970-01-01'), format="%d/%m")) %>% 
+  # tidyr::gather(muuttuja, arvo, sisäinen:ulkoinen) %>% 
+  # dplyr::select(date, arvo, muuttuja, outlier_ulkoinen, outlier_sisäinen) %>%
+  ggplot(aes(x = date, y = sisäinen)) +
+  geom_smooth(aes(x = date, y = sisäinen), color = "red", span = 0.15, se = FALSE) +
+  geom_point(alpha = 0.15, color = "red") +
+  geom_smooth(aes(x = date, y = ulkoinen), span = 0.15, se = FALSE) +
+  geom_point(aes(x = date, y = ulkoinen), color = "blue", alpha = 0.15) +
+  labs(x = NULL, y = NULL, title = "Sisäinen (pun.) ja ulkoinen (sin.) motivaatio mittausjaksolla") +
+  # geom_line(alpha = 0.3, size = 1.5) +
+  scale_x_date(date_labels="%d/%m", date_breaks  ="1 day") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(1, 10)) +
+  geom_text(aes(label = outlier_ulkoinen), hjust = -0.1) +
+  geom_text(aes(label = outlier_sisäinen), hjust = -0.1)
+
+
+```
+
+```{r}
+
+# Marking outliers, from: https://stackoverflow.com/questions/33524669/labeling-outliers-of-boxplots-in-r
+
+esm_data %>%  
+  rowwise %>% 
+  dplyr::mutate(Tarvetyydytys = ((Vapaaehtoisuus + Kyvykkyys + Yhteenkuuluvuus) / 3),
+                Olinpaikka = factor(Location),
+                `Muita paikalla` = social) %>% 
+  dplyr::group_by(task) %>%
+  dplyr::filter(!is.na(Tarvetyydytys)) %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(Tarvetyydytys), Tarvetyydytys, as.numeric(NA))) %>% 
+  dplyr::filter(n() > 5) %>% # Retain only tasks with more than 5 observations
+  ggplot(aes(x = task, y = Tarvetyydytys)) +
+  # geom_boxplot() +
+  geom_point(aes(size = `Muita paikalla`, color = Olinpaikka), position = position_jitter(w = 0.2, h = 0)) +
+  # geom_jitter(width = 0.2) +
+  ylim(c(0, 7)) +
+  labs(title = "Psykologisten perustarpeiden tyydyttyminen yleisimmissä tehtävissä", 
+       x = NULL,
+       y = "Perustarpeiden keskiarvo") +
+  theme_bw() 
+  
+
+```
+
+# Pirate plot
+
+```{r}
+
+esm_data %>%  
+  rowwise %>% 
+  dplyr::mutate(Tarvetyydytys = ((Vapaaehtoisuus + Kyvykkyys + Yhteenkuuluvuus) / 3)) %>% 
+  dplyr::group_by(task) %>%
+  dplyr::filter(!is.na(Tarvetyydytys)) %>% 
+  dplyr::filter(n() > 5) %>% # Retain only tasks with more than 5 observations
+yarrr::pirateplot(
+  formula = Tarvetyydytys ~ task, # dv is weight, iv is Diet
+  data = .,
+  theme = 0,
+  pal = "southpark", # southpark color palette
+  bean.f.o = .25, # Bean fill
+  point.o = .3, # Points
+  inf.f.o = .7, # Inference fill
+  inf.b.o = .8, # Inference border
+  avg.line.o = 1, # Average line
+  bar.f.o = .0, # Bar
+  inf.f.col = "white", # Inf fill col
+  inf.b.col = "black", # Inf border col
+  avg.line.col = "black", # avg line col
+  # bar.f.col = gray(.8), # bar filling color
+  point.pch = 21,
+  point.bg = "white",
+  point.col = "black",
+  point.cex = .7,
+  decreasing = TRUE,
+  main = "Tarvetyydytys yleisimmissä tehtävissä",
+  xlab = "",
+  ylab = "Psykologinen tarvetyydytys",
+  # xaxt = "n",
+  sortx = "mean",
+  ylim = c(0, 7))
+```
+
