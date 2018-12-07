@@ -37,7 +37,7 @@ esm_data <- esm_data_orig %>%
                 task = Task,
                 task = case_when(stringr::str_detect(task, "reading") ~ "lukeminen",
                                  stringr::str_detect(task, "leverage points") ~ "lukeminen",
-                                 stringr::str_detect(task, "email") ~ "email",
+                                 stringr::str_detect(task, "email") ~ "lukeminen",
                                  stringr::str_detect(task, "meeting") ~ "tapaaminen",
                                  stringr::str_detect(task, "skype") ~ "tapaaminen",
                                  stringr::str_detect(task, "Skype") ~ "tapaaminen",
@@ -54,9 +54,9 @@ esm_data <- esm_data_orig %>%
                                  stringr::str_detect(task, "longitudinal") ~ "data-analyysi",
                                  !is.na(task) ~ "muu",
                                  TRUE ~ task),
-                # Perustarpeet = ((Vapaaehtoisuus + Kyvykkyys + Yhteenkuuluvuus) / 3),
-                # "Sisäinen motivaatio" = (Tärkeys + Kiinnostus + Mielihyvä) / 3,
-                # "Ulkoinen motivaatio" = (`Joku toinen` + Tilanne + Syyllisyys) / 3,
+                Perustarpeet = ((Vapaaehtoisuus + Kyvykkyys + Yhteenkuuluvuus) / 3),
+                "Sisäinen motivaatio" = (Tärkeys + Kiinnostus + Mielihyvä) / 3,
+                "Ulkoinen motivaatio" = (`Joku toinen` + Tilanne + Syyllisyys) / 3,
                 Olinpaikka = factor(Location),
                 `Muita paikalla` = social,
                 User = "pacoMatti",
@@ -144,7 +144,11 @@ username <- "Moti05"
 # tnoData %>% tidyr::spread(Field, Value) %>% arrange(Date) %>% dplyr::select(User, Date, Serie, contains("productive"), contains("overall"))
 ```
 
-```{r}
+# Technique use
+
+Mean, SD and range of days from which technique data is available
+
+```{r techniqueDataAvailable}
 cohortData %>% 
   tidyr::spread(Field, Value) %>% 
   dplyr::group_by(User) %>% 
@@ -153,27 +157,42 @@ cohortData %>%
   dplyr::summarise(n = n()) %>% 
   dplyr::summarise(mean = mean(n), sd = sd(n), rangeFrom = range(n)[1], rangeTo = range(n)[2])
 
+  
+```
+
+Number of techniques reported by week since starting the study
+
+```{r}
 cohortData %>% 
   tidyr::spread(Field, Value) %>% 
   tidyr::separate(strategies, 
-                  into = paste("strategy", 1:20, sep = "_"), 
+                  into = paste("technique", 1:20, sep = "_"), 
                   sep = ";",
                   extra = "merge") %>% 
-  tidyr::gather(strategyPosition, strategyName, 
-                strategy_1:strategy_20,
-                factor_key = TRUE) %>% 
-  dplyr::mutate(strategy = factor(strategyName))
-  
-  
-    splitstackshape::cSplit("strategies", ";") %>% 
-  
-  
-  
-  tidyr::separate(strategies, 
-                  into = paste("strategy", 1:20, sep = "_"), 
-                  sep = ";",
-                  extra = "merge")
-  
+  tidyr::gather(techniquePosition, technique, 
+                technique_1:technique_20) %>% 
+  dplyr::mutate(technique = factor(technique),
+                week = lubridate::week(Date)) %>%
+  dplyr::mutate(Date = as.Date(Date),
+                Today = Sys.Date(),
+                Weeks = as.numeric(difftime(Today, Date, units="weeks")) %>% round(., 0)) %>% 
+  dplyr::group_by(User, Weeks) %>% 
+  dplyr::summarise(n_techniques = sum(!is.na(technique))) %>% 
+  dplyr::mutate(label = if_else(Weeks == max(Weeks), as.character(User), NA_character_)) %>% 
+  ggplot(aes(y = n_techniques, x = Weeks, fill = User)) +
+  geom_line(size = 1.05, alpha = 0.8, aes(colour = User)) +
+  geom_point(size = 1.05, alpha = 0.8, aes(colour = User)) +
+  ggrepel::geom_text_repel(aes(label = label), # see: https://stackoverflow.com/questions/29357612/plot-labels-at-ends-of-lines
+    alpha = 0.5,
+    size = 2.5,
+    box.padding = 0,
+    nudge_x = 1,
+    na.rm = TRUE) +
+  scale_y_continuous(breaks = seq(from = 0, to = 1000, by = 5)) + 
+  scale_colour_viridis_d(end = 0.9) +
+  labs(x = "Weeks since start of study", y = "Reported technique use") +
+  theme_bw() +
+  theme(legend.position = "none") 
 ```
 
 # Save data for sideR / tileR
@@ -419,58 +438,6 @@ esm_data %>% dplyr::filter(!is.na(task)) %>%
     guides(fill = guide_legend(reverse = TRUE, title = "Tehtävä"))
 
 ```
-
-# Techniques
-
-Mean, SD and range of days from which technique data is available
-
-```{r techniqueDataAvailable}
-cohortData %>% 
-  tidyr::spread(Field, Value) %>% 
-  dplyr::group_by(User) %>% 
-  dplyr::select(User, strategies) %>% 
-  na.omit(strategies) %>% 
-  dplyr::summarise(n = n()) %>% 
-  dplyr::summarise(mean = mean(n), sd = sd(n), rangeFrom = range(n)[1], rangeTo = range(n)[2])
-
-  
-```
-
-Number of techniques reported by week since starting the study
-
-```{r}
-cohortData %>% 
-  tidyr::spread(Field, Value) %>% 
-  tidyr::separate(strategies, 
-                  into = paste("technique", 1:20, sep = "_"), 
-                  sep = ";",
-                  extra = "merge") %>% 
-  tidyr::gather(techniquePosition, technique, 
-                technique_1:technique_20) %>% 
-  dplyr::mutate(technique = factor(technique),
-                week = lubridate::week(Date)) %>%
-  dplyr::mutate(Date = as.Date(Date),
-                Today = Sys.Date(),
-                Weeks = as.numeric(difftime(Today, Date, units="weeks")) %>% round(., 0)) %>% 
-  dplyr::group_by(User, Weeks) %>% 
-  dplyr::summarise(n_techniques = sum(!is.na(technique))) %>% 
-  dplyr::mutate(label = if_else(Weeks == max(Weeks), as.character(User), NA_character_)) %>% 
-  ggplot(aes(y = n_techniques, x = Weeks, fill = User)) +
-  geom_line(size = 1.05, alpha = 0.8, aes(colour = User)) +
-  geom_point(size = 1.05, alpha = 0.8, aes(colour = User)) +
-  ggrepel::geom_text_repel(aes(label = label), # see: https://stackoverflow.com/questions/29357612/plot-labels-at-ends-of-lines
-    alpha = 0.5,
-    size = 2.5,
-    box.padding = 0,
-    nudge_x = 1,
-    na.rm = TRUE) +
-  scale_y_continuous(breaks = seq(from = 0, to = 1000, by = 5)) + 
-  scale_colour_viridis_d(end = 0.9) +
-  labs(x = "Weeks since start of study", y = "Reported technique use") +
-  theme_bw() +
-  theme(legend.position = "none") 
-```
-
 
 # Motivation dot (and-line) charts
 

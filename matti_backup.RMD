@@ -1,0 +1,1562 @@
+---
+output:
+  html_document:
+#  bookdown::html_document2:
+#    includes:
+#      in_header: header.html
+    toc: TRUE
+    toc_depth: 4
+    toc_float: TRUE
+#    collapsed: FALSE # doesn't work..?
+    theme: readable # was "readable" before
+    highlight: tango
+    df_print: paged
+    paged_print: true
+    code_folding: hide
+    lib_dir: site_libs
+#    self_contained: FALSE
+---
+
+```{r}
+library(tidyverse)
+library(ggridges)
+library(patchwork)
+
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE,
+                      message = FALSE,
+                      error = TRUE,
+                      cache = TRUE, 
+                      collapse = TRUE,
+                      eval = TRUE,
+                      dpi = 300)
+knitr::opts_chunk$set(root.dir = ".")  # Always set project root as working directory
+knitr::opts_knit$set(root.dir = ".")  # This is needed for some versions of RStudio
+# knitr::opts_chunk$set(echo = TRUE, rows.print=15)
+
+username <- "Moti05"
+```
+
+# Setup data
+
+Osallistuja `r username`
+
+```{r first}
+
+tnoData <- readr::read_tsv("../data/data.tsv")
+
+analysisData_orig <- tnoData %>% 
+  dplyr::filter(User == username)
+
+# If participant hasn't answered these fields, create empty ones so that rest of the code works
+if(!"own_question" %in% analysisData_orig$Field) {
+  analysisData_orig$`Oma kysymys` <- as.character(NA)
+}
+
+if(!"strategies_other" %in% analysisData_orig$Field) {
+  analysisData_orig$Tekniikat_muu <- as.character(NA)
+}
+
+if(!"Tekniikat_muu" %in% analysisData_orig$Field) {
+  analysisData_orig$Tekniikat_muu <- as.character(NA)
+}
+if(!"location_other" %in% analysisData_orig$Field) {
+  analysisData_orig$Paikka_muu <- as.character(NA)
+}
+
+analysisData <- analysisData_orig %>% 
+  dplyr::mutate(Field = case_when(
+  stringr::str_detect(Field, pattern = "competen") ~ "Kyvykkyys", # covers "competence" and "competent"
+  stringr::str_detect(Field, pattern = "choose_the_way_of_working") ~ "Vapaaehtoisuus",
+  stringr::str_detect(Field, pattern = "autonomy") ~ "Vapaaehtoisuus",
+  stringr::str_detect(Field, pattern = "important_part_of_a_group") ~ "Yhteenkuuluvuus",
+  stringr::str_detect(Field, pattern = "relatedness") ~ "Yhteenkuuluvuus",
+  stringr::str_detect(Field, pattern = "guilty_or_anxious") ~ "Syyllisyys",
+  stringr::str_detect(Field, pattern = "anxiety_guilt") ~ "Syyllisyys",
+  stringr::str_detect(Field, pattern = "important") ~ "Tärkeys",
+  stringr::str_detect(Field, pattern = "importance") ~ "Tärkeys",
+  stringr::str_detect(Field, pattern = "interesting") ~ "Kiinnostus",
+  stringr::str_detect(Field, pattern = "interest") ~ "Kiinnostus",
+  stringr::str_detect(Field, pattern = "pleasurable") ~ "Mielihyvä",
+  stringr::str_detect(Field, pattern = "pleasure") ~ "Mielihyvä",
+  stringr::str_detect(Field, pattern = "someone_else_wants_me_to") ~ "Joku toinen",
+  stringr::str_detect(Field, pattern = "for_others") ~ "Joku toinen",
+  stringr::str_detect(Field, pattern = "situation_requires") ~ "Tilanne",
+  stringr::str_detect(Field, pattern = "required") ~ "Tilanne",
+  stringr::str_detect(Field, pattern = "own_question") ~ "Oma kysymys",
+  stringr::str_detect(Field, pattern = "your_last_break_ended") ~ "Aikaa tauosta",
+  stringr::str_detect(Field, pattern = "time_since_break") ~ "Aikaa tauosta",
+  stringr::str_detect(Field, pattern = "satisfaction_work") ~ "Tyytyväisyys työpäivään",
+  stringr::str_detect(Field, pattern = "productivity_work") ~ "Tyytyväisyys suoritukseen",
+  stringr::str_detect(Field, pattern = "how_satisfied_were_you") ~ "Tyytyväisyys työpäivään",
+  stringr::str_detect(Field, pattern = "how_productive_were_you") ~ "Tyytyväisyys suoritukseen",  
+  stringr::str_detect(Field, pattern = "strategies_other") ~ "Tekniikat_muu",  
+  stringr::str_detect(Field, pattern = "strategies") ~ "Tekniikat",
+  stringr::str_detect(Field, pattern = "how_well_did_you_sleep") ~ "Unenlaatu",
+  stringr::str_detect(Field, pattern = "sleep_quality") ~ "Unenlaatu",
+  stringr::str_detect(Field, pattern = "what_task_you_are_working") ~ "task",
+  Field == "task" ~ "task",
+  stringr::str_detect(Field, pattern = "add_any_notes_comments") ~ "Kommentit hetkestä",
+  stringr::str_detect(Field, pattern = "comments_moment") ~ "Kommentit hetkestä",
+  stringr::str_detect(Field, pattern = "additional_information_about_your_day") ~ "Kommentit päivästä",
+  stringr::str_detect(Field, pattern = "comments_day") ~ "Kommentit päivästä",
+  stringr::str_detect(Field, pattern = "how_many_other_people") ~ "Muita paikalla",
+  stringr::str_detect(Field, pattern = "others_task") ~ "Muita paikalla",
+  stringr::str_detect(Field, pattern = "location_other") ~ "Olinpaikka_muu",
+  stringr::str_detect(Field, pattern = "where_are_you_working") ~ "Olinpaikka",
+  stringr::str_detect(Field, pattern = "location") ~ "Olinpaikka",
+  TRUE ~ Field),
+  # Field = factor(Field, level = c("Kyvykkyys", "Vapaaehtoisuus", "Yhteenkuuluvuus",
+  #                                 "Kiinnostus", "Mielihyvä", "Tärkeys",
+  #                                 "Tilanne", "Syyllisyys", "Joku toinen",
+  #                                 "Oma kysymys",
+  #                                 "Tyytyväisyys työpäivään", "Tyytyväisyys suoritukseen",
+  #                                 "Tekniikat", "Unenlaatu", 
+  #                                 "Aikaa tauosta", )),
+  day = lubridate::yday(Date)) %>%
+  dplyr::filter(!is.na(Field)) %>%
+  tidyr::spread(Field, Value) %>%
+  dplyr::mutate(task = ifelse(task == "99", task_other, task),
+                task = ifelse(task == "other", task_other, task),
+                task = ifelse(!is.na(project_name), project_name, task),
+                `Muita paikalla` = ifelse(`Muita paikalla` == "alone", 0, 
+                                          ifelse(`Muita paikalla` == "with_1", 1, `Muita paikalla`)),
+                Tekniikat = ifelse(!is.na(Tekniikat_muu), paste0(Tekniikat, ";", Tekniikat_muu), Tekniikat)) %>% 
+  dplyr::mutate(task = case_when(stringr::str_detect(task, pattern = "email") ~ "Email",
+                   stringr::str_detect(task, pattern = "sähköposti") ~ "Email", 
+                   stringr::str_detect(task, pattern = "Skype") ~ "meet_internal", 
+                   stringr::str_detect(task, pattern = "slyoe") ~ "meet_internal", 
+                   stringr::str_detect(task, pattern = "meet_colleagues") ~ "meet_internal",
+                   stringr::str_detect(task, pattern = "social") ~ "Some",
+                   stringr::str_detect(task, pattern = "Social") ~ "Some",
+                   stringr::str_detect(task, pattern = "reading") ~ "Reading",
+                   stringr::str_detect(task, pattern = "Reading") ~ "Reading", 
+                   stringr::str_detect(task, pattern = "lukeminen") ~ "Reading", 
+                   stringr::str_detect(task, pattern = "blog") ~ "Reading", 
+                   stringr::str_detect(task, pattern = "read_report") ~ "Reading",
+                   stringr::str_detect(task, pattern = "writing_memo") ~ "Writing",
+                   stringr::str_detect(task, pattern = "create_content") ~ "Writing",
+                   stringr::str_detect(task, pattern = "report_write_comment") ~ "Writing",
+                   stringr::str_detect(task, pattern = "purku") ~ "Writing",
+                   stringr::str_detect(task, pattern = "purkaminen") ~ "Writing",
+                   stringr::str_detect(task, pattern = "Baseline") ~ "Writing",
+                   stringr::str_detect(task, pattern = "write_report") ~ "Writing",
+                   stringr::str_detect(task, pattern = "Lapsen hoito") ~ "Lapsenhoito",
+                   stringr::str_detect(task, pattern = "analy") ~ "Data-analysis", 
+                   stringr::str_detect(task, pattern = "Longitudinal networks") ~ "Data-analysis",
+                   stringr::str_detect(task, pattern = "Interpreting") ~ "Data-analysis", 
+                   stringr::str_detect(task, pattern = "imurointi") ~ "Kotityöt",
+                   stringr::str_detect(task, pattern = " kuun") ~ "Audiobook",
+                   stringr::str_detect(task, pattern = "scal") ~ "Audiobook",
+                   stringr::str_detect(task, pattern = "purku") ~ "Writing",
+                   stringr::str_detect(task, pattern = "purkaminen") ~ "Writing",
+                   stringr::str_detect(task, pattern = "Baseline") ~ "Writing",
+                   stringr::str_detect(task, pattern = "analy") ~ "Data-analysis",
+                   stringr::str_detect(task, pattern = "Meeting Keegan") ~ "meet_internal",
+                   stringr::str_detect(task, pattern = "Motimoti") ~ "meet_internal",
+                   stringr::str_detect(task, pattern = "Organising work") ~ "Organising work",
+                   stringr::str_detect(task, pattern = "plan_projects") ~ "Organising work",
+                   stringr::str_detect(task, pattern = "Puhelu kotiin") ~ "Family",
+                   stringr::str_detect(task, pattern = "perhe") ~ "Family",
+                   stringr::str_detect(task, pattern = "Fluktuaatio") ~ "Reading",
+                   stringr::str_detect(task, pattern = "slyoe") ~ "meet_internal",
+                   TRUE ~ task),
+                `Muita paikalla` = case_when(stringr::str_detect(`Muita paikalla`, pattern = "2") ~ "2", 
+                   stringr::str_detect(`Muita paikalla`, pattern = "3") ~ "3", 
+                   stringr::str_detect(`Muita paikalla`, pattern = "4") ~ "4+",
+                   TRUE ~ `Muita paikalla`),
+                `Aikaa tauosta` = case_when(stringr::str_detect(`Aikaa tauosta`, pattern = "1") ~ "60", 
+                   stringr::str_detect(`Aikaa tauosta`, pattern = "no_break_yet") ~ "Ei vielä taukoja",
+                   TRUE ~ `Aikaa tauosta`)) %>% 
+  dplyr::mutate_at(vars(Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, 
+                        Tärkeys, Kiinnostus, Mielihyvä,
+                        "Joku toinen", Tilanne, Syyllisyys), 
+                   funs(as.numeric(.))) %>% 
+  dplyr::mutate("Perustarpeet" = (Kyvykkyys + Vapaaehtoisuus + Yhteenkuuluvuus) / 3,
+                "Sisäinen motivaatio" = (Tärkeys + Kiinnostus + Mielihyvä) / 3,
+                "Ulkoinen motivaatio" = (`Joku toinen` + Tilanne + Syyllisyys) / 3) %>%
+  type.convert() %>% 
+  dplyr::mutate(date = as.Date(Date),
+                Date = as.POSIXct(Date)) %>% 
+  dplyr::mutate_if(is.integer, as.numeric) %>% 
+  dplyr::mutate( # Old scales on these variables were 1-100, so change that:
+                `Tyytyväisyys työpäivään` = if_else(as.Date(Date) < "2018-09-18", `Tyytyväisyys työpäivään` / 2, `Tyytyväisyys työpäivään`),  
+                `Tyytyväisyys suoritukseen` = ifelse(as.Date(Date) < "2018-09-18", `Tyytyväisyys suoritukseen` / 2, `Tyytyväisyys suoritukseen`), 
+                Unenlaatu = ifelse(as.Date(Date) < "2018-09-18", Unenlaatu / 2, Unenlaatu)) %>% 
+  dplyr::arrange(Date) %>% 
+  dplyr::group_by(day) %>% # Three variables were measured 1/day. Spread these to all the other answers that day.
+  dplyr::mutate(Unenlaatu = mean(Unenlaatu, na.rm = TRUE),
+                `Tyytyväisyys työpäivään` = mean(`Tyytyväisyys työpäivään`, na.rm = TRUE),
+                `Tyytyväisyys suoritukseen` = mean(`Tyytyväisyys suoritukseen`, na.rm = TRUE)) %>% 
+  dplyr::ungroup() 
+
+# Marking outliers, from: https://stackoverflow.com/questions/33524669/labeling-outliers-of-boxplots-in-r
+is_outlier <- function(x) {
+  return(x < quantile(x, 0.25, na.rm = TRUE) - 1.5 * IQR(x, na.rm = TRUE) | x > quantile(x, 0.75, na.rm = TRUE) + 1.5 * IQR(x, na.rm = TRUE))
+}
+
+# Find top tasks & projects, and make a variable which indicates those
+
+orderedTasks <- analysisData %>% 
+  dplyr::group_by(task) %>% 
+  dplyr::count() %>% 
+  dplyr::top_n(1) %>% 
+  dplyr::arrange(desc(n)) %>% 
+  na.omit(.) %>% 
+  dplyr::select(task) %>%
+  dplyr::pull() 
+
+orderedTasks <- c(as.character(orderedTasks[1:4]), "muu")
+
+analysisData <- analysisData %>% 
+  dplyr::mutate(Tehtävä = ifelse(task %in% orderedTasks, as.character(task), "muu")) 
+
+orderedProjects <- analysisData %>% 
+  dplyr::group_by(project_name) %>% 
+  dplyr::count() %>% 
+  dplyr::top_n(1) %>% 
+  dplyr::arrange(desc(n)) %>% 
+  na.omit(.) %>% 
+  dplyr::select(project_name) %>%
+  dplyr::pull() 
+
+orderedProjects <- c(as.character(orderedProjects[1:3]), "muu")
+
+analysisData <- analysisData %>% 
+  dplyr::mutate(Projekti = ifelse(project_name %in% orderedProjects, as.character(project_name), "muu"))
+
+analysisData %>% 
+  dplyr::filter(!is.na(task)) %>%
+  dplyr::mutate(Task = reorder(task, task, FUN = length)
+         # Task = forcats::fct_relevel(Task, "muu", after = Inf)
+         ) %>% 
+  dplyr::count(Task) %>% # essentially the same as dplyr::group_by(task) %>% dplyr::summarise(n = n())
+  dplyr::mutate(fraction = n / sum(n),
+                ymax = cumsum(fraction), # cumulative sum going down
+                ymin = c(0, head(ymax, n = -1)))
+```
+
+<!-- # Tiler -->
+
+```{r save-for-exploration, eval = FALSE, include = FALSE}
+filepath <- paste0("C:/LocalData/hema/git-projects/sideR-master/R/sideR/data/", username, ".rds")
+
+tnoData %>% 
+  dplyr::filter(User == username) %>%
+  tidyr::spread(Field, Value) %>% 
+  dplyr::mutate_at(vars(anxiety_guilt, autonomy, competence, for_others, importance, interest, own_question, pleasure, 
+                        productivity_work, satisfaction_work, sleep_quality,
+                        relatedness, required, time_since_break), 
+                   funs(as.numeric)) %>% 
+  dplyr::mutate_at(vars(location, others_task, project_name, task), funs(forcats::as_factor)) %>%
+  dplyr::select(anxiety_guilt, autonomy, competence, for_others, importance, interest, own_question, pleasure, 
+                        # productivity_work, satisfaction_work, sleep_quality, project_name
+                        relatedness, required, time_since_break,
+                location, others_task, task) %>% 
+  na.omit(.) %>% 
+  saveRDS(., filepath)
+
+analysisData %>%
+  dplyr::rename_all(funs(make.names(.))) %>% 
+  dplyr::select(Aikaa.tauosta, Joku.toinen, Kiinnostus, Kyvykkyys, location, Mielihyvä, Muita.paikalla, 
+                Oma.kysymys, Syyllisyys, task, Tilanne, Tärkeys, Vapaaehtoisuus, Yhteenkuuluvuus, -Oma.kysymys) %>% 
+  na.omit(.) %>% 
+  saveRDS(., filepath)
+
+shiny::runApp("C:/LocalData/hema/git-projects/sideR-master/R/sideR")
+
+
+devtools::install_github("aheneliu/tiler")
+
+tiler::run_tiler()
+```
+
+# Tasks
+
+```{r tasks}
+  
+analysisData %>% 
+  dplyr::filter(!is.na(task)) %>%
+  dplyr::mutate(Task = reorder(task, task, FUN = length)
+         # Task = forcats::fct_relevel(Task, "muu", after = Inf)
+         ) %>% 
+  dplyr::count(Task) %>% # essentially the same as dplyr::group_by(task) %>% dplyr::summarise(n = n())
+  dplyr::mutate(fraction = n / sum(n),
+                ymax = cumsum(fraction), # cumulative sum going down
+                ymin = c(0, head(ymax, n = -1))) %>% # starting from the previous value, add the next 
+  dplyr::arrange(desc(fraction)) %>% 
+  ggplot(aes(fill = Task, ymax = ymax, ymin = ymin, xmax = 9, xmin = 5)) +
+    geom_rect(colour = "grey30") +
+    coord_polar(theta = "y") +
+    xlim(c(0, 9)) +
+    theme_bw() +
+    theme(panel.grid = element_blank()) +
+    theme(axis.text = element_blank()) +
+    theme(axis.ticks = element_blank()) +
+    # theme(legend.title = element_blank()) + # This works but makes the boxes too close to the items
+    labs(x = NULL, y = NULL, title = NULL) +
+    annotate("text", x = 0, y = 0, label = paste0("Vastauksia: ", sum(!is.na(analysisData$task)))) +
+    ggrepel::geom_label_repel(aes(label = paste(fraction %>% round(., 2) * 100, "%"), 
+                                  x = 7, y = (ymin + ymax)/2),
+                              inherit.aes = TRUE, 
+                              show.legend = FALSE,
+                              force = 0.01) +
+    guides(fill = guide_legend(reverse = TRUE, title = "Tehtävä"))
+
+```
+
+<!-- # Projects  -->
+
+```{r projects, eval = FALSE}
+analysisData %>% 
+  dplyr::filter(!is.na(project_name)) %>%
+  dplyr::mutate(project_name = reorder(project_name, project_name, FUN = length)) %>% 
+  dplyr::count(project_name) %>% # essentially the same as dplyr::group_by(task) %>% dplyr::summarise(n = n())
+  dplyr::mutate(fraction = n / sum(n),
+                ymax = cumsum(fraction), # cumulative sum going down
+                ymin = c(0, head(ymax, n = -1))) %>% # starting from the previous value, add the next 
+  dplyr::arrange(desc(fraction)) %>% 
+  ggplot(aes(fill = project_name, ymax = ymax, ymin = ymin, xmax = 9, xmin = 5)) +
+    geom_rect(colour = "grey30") +
+    coord_polar(theta = "y") +
+    xlim(c(0, 9)) +
+    theme_bw() +
+    theme(panel.grid = element_blank()) +
+    theme(axis.text = element_blank()) +
+    theme(axis.ticks = element_blank()) +
+    # theme(legend.title = element_blank()) + # This works but makes the boxes too close to the items
+    labs(x = NULL, y = NULL, title = NULL) +
+    annotate("text", x = 0, y = 0, label = paste0("Vastauksia: ", sum(!is.na(analysisData$project_name)))) +
+    ggrepel::geom_label_repel(aes(label = paste(fraction %>% round(., 2) * 100, "%"), 
+                                  x = 7, y = (ymin + ymax)/2),
+                              inherit.aes = TRUE, 
+                              show.legend = FALSE,
+                              force = 0.01) +
+    guides(fill = guide_legend(reverse = TRUE, title = "Projekti"))
+```
+
+# Time since last break 
+
+```{r breaks}
+analysisData %>% 
+  dplyr::filter(!is.na(`Aikaa tauosta`)) %>%
+  dplyr::mutate(`Aikaa tauosta` = factor(`Aikaa tauosta`, 
+                                         levels = c("Ei vielä taukoja", "0", "30", "60", "90", "120", "240"),
+                                         ordered = TRUE)) %>% 
+  dplyr::count(`Aikaa tauosta`) %>% # essentially the same as dplyr::group_by(task) %>% dplyr::summarise(n = n())
+  dplyr::mutate(fraction = n / sum(n),
+                ymax = cumsum(fraction), # cumulative sum going down
+                ymin = c(0, head(ymax, n = -1))) %>% # starting from the previous value, add the next 
+  dplyr::arrange(desc(fraction)) %>% 
+  ggplot(aes(fill = `Aikaa tauosta`, ymax = ymax, ymin = ymin, xmax = 9, xmin = 5)) +
+    geom_rect(colour = "grey30") +
+    coord_polar(theta = "y") +
+    xlim(c(0, 9)) +
+    theme_bw() +
+    theme(panel.grid = element_blank()) +
+    theme(axis.text = element_blank()) +
+    theme(axis.ticks = element_blank()) +
+    # theme(legend.title = element_blank()) + # This works but makes the boxes too close to the items
+    labs(x = NULL, y = NULL, title = "Aikaa edellisestä tauosta vastaushetkellä") +
+    annotate("text", x = 0, y = 0, label = paste0("Vastauksia: ", sum(!is.na(analysisData$`Aikaa tauosta`)))) +
+    ggrepel::geom_label_repel(aes(label = paste(fraction %>% round(., 2) * 100, "%"), 
+                                  x = 7, y = (ymin + ymax)/2),
+                              inherit.aes = TRUE, 
+                              show.legend = FALSE,
+                              force = 0.01) +
+    guides(fill = guide_legend(reverse = FALSE, title = "Aikaa tauosta"))
+```
+
+
+# Motivation self-management techniques
+
+```{r techniques}
+analysisData %>% 
+  tidyr::separate(col = Tekniikat, 
+                into = paste0("technique", "_", 1:20),
+                sep = ";",
+                extra = "merge"
+                ) %>% 
+  tidyr::gather(techniqueName, techniques, technique_1:technique_20) %>% 
+  dplyr::group_by(techniques) %>% 
+  dplyr::summarise(times_reported = sum(!is.na(techniques))) %>% 
+  dplyr::arrange(desc(times_reported)) %>% 
+  na.omit(.) %>% 
+  dplyr::mutate(techniques = factor(techniques, levels = techniques)) %>% 
+  ggplot(aes(x = techniques)) + 
+  geom_point(aes(x = techniques, y = times_reported), size = 6) +
+  geom_segment(aes(y = 0, 
+                   x = techniques, 
+                   yend = times_reported, 
+                   xend = techniques), 
+               color = "black") +
+  geom_text(aes(x = techniques, y = times_reported, label = times_reported), color = "white", size = 3) +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle = -20, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  labs(y = "Raportointikertoja", x = "Motivaation omahallinnan tekniikat")
+
+
+analysisData %>% 
+  tidyr::separate(col = Tekniikat, 
+                into = paste0("technique", "_", 1:20),
+                sep = ";",
+                extra = "merge"
+                ) %>% 
+  tidyr::gather(techniqueName, techniques, technique_1:technique_20) %>% 
+  dplyr::mutate(Date = as.Date(Date)) %>% 
+  dplyr::group_by(Date) %>% 
+  dplyr::summarise(techniques_reported = sum(!is.na(techniques))) %>% 
+  dplyr::arrange(Date) %>% 
+  ggplot(aes(x = as.Date(Date))) + 
+  geom_point(aes(y = techniques_reported)) +
+  geom_line(aes(y = techniques_reported)) +
+  scale_x_date(date_labels = "%d/%m", date_breaks = "2 days") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0)) +
+  labs(y = "Raportoitujen tekniikoiden määrä", 
+       x = NULL, 
+       title = "Motivaation omahallinnan tekniikoiden raportointi mittausjaksolla")
+
+```
+
+# Motivation dot (and-line) charts
+
+```{r daily-questions}
+# analysisData %>% tidyr::gather(muuttuja, arvo, Vapaaehtoisuus:Yhteenkuuluvuus) %>% 
+#   dplyr::select(date, arvo, muuttuja) %>% 
+#   na.omit() %>%
+#   ggplot(aes(x = date, y = arvo, group = muuttuja, colour = muuttuja)) +
+#   geom_smooth(span = 0.15, se = FALSE) +
+#   # geom_point() +
+#   labs(x = NULL) +
+#   # geom_line(alpha = 0.3, size = 1.5) +
+#   theme_bw()
+
+
+analysisData %>%
+  dplyr::mutate(outlier_ulkoinen = ifelse(is_outlier(`Ulkoinen motivaatio`), 
+                                          paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                          as.character(NA)),
+                outlier_sisäinen = ifelse(is_outlier(`Sisäinen motivaatio`), 
+                                          paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                          as.character(NA))) %>% 
+  ggplot(aes(x = Date, y = `Sisäinen motivaatio`)) +
+  # geom_smooth(aes(x = Date, y = `Sisäinen motivaatio`), color = "red", span = 0.15, se = FALSE) +
+  geom_point(alpha = 0.15, color = "red") +
+  # geom_smooth(aes(x = Date, y = `Ulkoinen motivaatio`), span = 0.15, se = FALSE) +
+  geom_point(aes(x = Date, y = `Ulkoinen motivaatio`), color = "blue", alpha = 0.15) +
+  labs(x = NULL, y = NULL, title = "Sisäinen (pun.) ja Ulkoinen (sin.) motivaatio mittausjaksolla") +
+  # geom_line(alpha = 0.3, size = 1.5) +
+  scale_x_datetime(labels = scales::date_format("%d/%m"), date_breaks = "2 days") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(0, 50)) +
+  geom_text(aes(label = outlier_ulkoinen), hjust = -0.1) +
+  geom_text(aes(label = outlier_sisäinen), hjust = -0.1) 
+
+analysisData %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(`Joku toinen`),
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                 as.character(NA))) %>%
+  ggplot(aes(x = Date, y = `Joku toinen`)) +
+  geom_point(aes(x = Date, y = `Joku toinen`, color = Tehtävä, shape = Projekti), 
+             position = position_jitter(w = 0.15, h = 0.15), 
+             alpha = 0.8) +
+  scale_x_datetime(date_labels = "%d/%m", date_breaks = "2 days") +
+  theme_bw() +
+  labs(x = NULL, y = NULL, title = "... Koska joku muu haluaa") +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(1, 50)) +
+  geom_text(aes(label = outlier), hjust = -0.1) 
+
+analysisData %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(`Tilanne`),
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                 as.character(NA))) %>%
+  ggplot(aes(x = Date, y = `Tilanne`)) +
+  geom_point(aes(x = Date, y = `Tilanne`, color = Tehtävä, shape = Projekti), 
+             position = position_jitter(w = 0.15, h = 0.15), 
+             alpha = 0.8) +
+  scale_x_datetime(date_labels = "%d/%m", date_breaks = "2 days") +
+  theme_bw() +
+  labs(x = NULL, y = NULL, title = "... Koska tilanne vaatii") +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(1, 50)) +
+  geom_text(aes(label = outlier), hjust = -0.1) 
+
+analysisData %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(Mielihyvä),
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                 as.character(NA))) %>%
+  ggplot(aes(x = Date, y = `Mielihyvä`)) +
+  geom_point(aes(x = Date, y = `Mielihyvä`, color = Tehtävä, shape = Projekti), 
+             position = position_jitter(w = 0.15, h = 0.15), 
+             alpha = 0.8) +
+  scale_x_datetime(date_labels = "%d/%m", date_breaks = "2 days") +
+  theme_bw() +
+  labs(x = NULL, y = NULL, title = "... Koska se on miellyttävää") +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(1, 50)) +
+  geom_text(aes(label = outlier), hjust = -0.1) 
+
+analysisData %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(Kiinnostus),
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                 as.character(NA))) %>%
+  ggplot(aes(x = Date, y = `Kiinnostus`)) +
+  geom_point(aes(x = Date, y = `Kiinnostus`, color = Tehtävä, shape = Projekti), 
+             position = position_jitter(w = 0.15, h = 0.15), 
+             alpha = 0.8) +
+  scale_x_datetime(date_labels = "%d/%m", date_breaks = "2 days") +
+  theme_bw() +
+  labs(x = NULL, y = NULL, title = "... Koska se on kiinnostavaa") +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(1, 50)) +
+  geom_text(aes(label = outlier), hjust = -0.1) 
+
+analysisData %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(Tärkeys),
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                 as.character(NA))) %>%
+  ggplot(aes(x = Date, y = `Tärkeys`)) +
+  geom_point(aes(x = Date, y = `Tärkeys`, color = Tehtävä, shape = Projekti), 
+             position = position_jitter(w = 0.15, h = 0.15), 
+             alpha = 0.8) +
+  scale_x_datetime(date_labels = "%d/%m", date_breaks = "2 days") +
+  theme_bw() +
+  labs(x = NULL, y = NULL, title = "... Koska se on tärkeää minulle") +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(1, 50)) +
+  geom_text(aes(label = outlier), hjust = -0.1) 
+
+analysisData %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(Syyllisyys),
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                 as.character(NA))) %>%
+  ggplot(aes(x = Date, y = `Syyllisyys`)) +
+  geom_point(aes(x = Date, y = `Syyllisyys`, color = Tehtävä, shape = Projekti), 
+             position = position_jitter(w = 0.15, h = 0.15), 
+             alpha = 0.8) +
+  scale_x_datetime(date_labels = "%d/%m", date_breaks = "2 days") +
+  theme_bw() +
+  labs(x = NULL, y = NULL, title = "... Koska muuten tuntisin itseni syylliseksi tai ahdistuneeksi") +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(1, 50)) +
+  geom_text(aes(label = outlier), hjust = -0.1) 
+
+# Marking outliers, from: https://stackoverflow.com/questions/33524669/labeling-outliers-of-boxplots-in-r
+is_outlier <- function(x) {
+  return(x < quantile(x, 0.25, na.rm = TRUE) - 0.5 * IQR(x, na.rm = TRUE) | x > quantile(x, 0.75, na.rm = TRUE) + 0.5 * IQR(x, na.rm = TRUE))
+}
+
+analysisData %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(`Oma kysymys`),
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                 as.character(NA))) %>%
+  ggplot(aes(x = Date, y = `Oma kysymys`)) +
+  geom_point(aes(x = Date, y = `Oma kysymys`, color = Tehtävä, shape = Projekti), 
+             position = position_jitter(w = 0.15, h = 0.15), 
+             alpha = 0.8) +
+  scale_x_datetime(date_labels = "%d/%m", date_breaks = "2 days") +
+  theme_bw() +
+  labs(x = NULL, y = NULL, title = "Oma kysymys") +
+  theme(axis.text.x=element_text(angle = 270, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(1, 50)) +
+  geom_text(aes(label = outlier), hjust = -0.1) 
+
+
+```
+
+## By hour
+
+```{r basic-needs-by-hour}
+# Marking outliers, from: https://stackoverflow.com/questions/33524669/labeling-outliers-of-boxplots-in-r
+is_outlier <- function(x) {
+  return(x < quantile(x, 0.25, na.rm = TRUE) - 1.5 * IQR(x, na.rm = TRUE) | x > quantile(x, 0.75, na.rm = TRUE) + 1.5 * IQR(x, na.rm = TRUE))
+}
+
+# Mutilate the Date-variable so it shows all times taking place on the same day
+analysisData$singleDay <- analysisData$Date
+lubridate::day(analysisData$singleDay) <- 1
+lubridate::month(analysisData$singleDay) <- 1
+
+analysisData$singleWeek <- analysisData$Date
+lubridate::week(analysisData$singleWeek) <- 1
+lubridate::year(analysisData$singleWeek) <- 1
+
+analysisData %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(Perustarpeet),
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                 as.character(NA))) %>%
+  ggplot(aes(x = `singleDay`, y = `Perustarpeet`)) +
+  geom_point(aes(x = `singleDay`, y = `Perustarpeet`, color = Tehtävä, shape = Projekti), 
+             # position = position_jitter(w = 0.15, h = 0.15), 
+             alpha = 0.8) +
+  scale_x_datetime(date_labels = "%H", date_breaks = "hour") +
+  theme_bw() +
+  labs(x = NULL, y = NULL, title = "Perustarpeet") +
+  # theme(axis.text.x=element_text(angle = 270, hjust = 0),
+  #       panel.grid.major = element_blank(),
+  #       panel.grid.minor = element_blank()) + 
+  scale_y_continuous(limits = c(1, 50)) +
+  geom_text(aes(label = outlier), hjust = -0.1)
+
+```
+
+## By weekday
+
+```{r basic-needs-weekday}
+
+analysisData %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(Perustarpeet),
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+                                 as.character(NA)),
+                weekday = lubridate::wday(Date, label = TRUE, abbr = TRUE)) %>%
+  ggplot(aes(x = `weekday`, y = `Perustarpeet`)) +
+  geom_point(aes(x = `weekday`, y = `Perustarpeet`, color = Tehtävä, shape = Projekti), 
+             position = position_jitter(w = 0.15, h = 0.15),
+             alpha = 0.8) +  
+  theme_bw() +
+  labs(x = NULL, y = NULL, title = "Perustarpeet") +
+  scale_y_continuous(limits = c(1, 50)) +
+  geom_text(aes(label = outlier), hjust = -0.1)
+
+# analysisData %>%
+#   dplyr::mutate(outlier = ifelse(is_outlier(Perustarpeet),
+#                                  paste0(lubridate::day(Date), "/", lubridate::month(Date)),
+#                                  as.character(NA)),
+#                 `Time of day` = hms::hms(lubridate::second(Date), lubridate::minute(Date), lubridate::hour(Date))) %>%
+#   ggplot(aes(x = `Date`, y = `Perustarpeet`)) +
+#   geom_point(aes(x = `Date`, y = `Perustarpeet`, color = Tehtävä), 
+#              # position = position_jitter(w = 0.15, h = 0.15), 
+#              alpha = 0.8) +
+#   scale_x_datetime(date_labels = "%a %H:%M:%S", date_breaks = "2 days") +
+#   theme_bw() +
+#   labs(x = NULL, y = NULL, title = "Perustarpeet") +
+#   theme(axis.text.x=element_text(angle = 270, hjust = 0),
+#         panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank()) + 
+#   scale_y_continuous(limits = c(1, 50)) +
+#   geom_text(aes(label = outlier), hjust = -0.1) 
+
+```
+
+# Average psychological needs satisfaction in common tasks
+
+```{r basic-needs-in-tasks}
+analysisData %>%
+  dplyr::filter(!is.na(Perustarpeet)) %>%
+  dplyr::group_by(task) %>%
+  dplyr::mutate(outlier = ifelse(is_outlier(Perustarpeet), 
+                                 paste0(lubridate::day(Date), "/", lubridate::month(Date)), 
+                                 as.character(NA))) %>% 
+  dplyr::filter(n() > 5) %>% # Retain only tasks with more than n observations
+  ggplot(aes(x = task, y = Perustarpeet)) +
+  # geom_boxplot() +
+  geom_point(aes(size = `Muita paikalla`, color = Olinpaikka), position = position_jitter(w = 0.2, h = 0)) +
+  # geom_jitter(width = 0.2) +
+  ylim(c(0, 50)) +
+  labs(title = "Psykologisten perustarpeiden tyydyttyminen yleisimmissä tehtävissä", 
+       x = NULL,
+       y = "Perustarpeiden keskiarvo") +
+  theme_bw()  +
+  geom_text(aes(label = outlier), hjust = -0.1) +
+  theme(axis.text.x=element_text(angle = -15, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) 
+
+
+```
+
+# Distributions
+
+```{r distributions-all}
+
+plotData <- analysisData %>%
+  dplyr::select(Kiinnostus, Mielihyvä, Tärkeys, Tilanne, Syyllisyys, `Joku toinen`,
+                `Sisäinen motivaatio`, `Ulkoinen motivaatio`,
+                Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, Perustarpeet,
+                `Oma kysymys`,
+                Unenlaatu, `Tyytyväisyys suoritukseen`, `Tyytyväisyys työpäivään`,
+                Tehtävä, Projekti, Date) 
+
+# Transform to tidy data (1 observation per row)
+plotData <- plotData %>% 
+  tidyr::gather(Field, Value, -Tehtävä, -Projekti, -Date) %>%
+  dplyr::mutate(Field = factor(Field, levels = colnames(plotData)[1:(ncol(plotData)-3)])) %>% 
+  dplyr::filter(!is.na(Value)) 
+
+number_of_colours <- length(unique(plotData$Field))
+
+densityPlots <- plotData %>% 
+  ggplot2::ggplot(aes(y = forcats::fct_rev(Field))) +
+  ggridges::geom_density_ridges2(
+    aes(x = Value, colour = "black", 
+        fill = Field,
+        point_color = Field,
+        point_fill = Field,
+        point_shape = Field),
+    scale = .75, alpha = 0.6, size = 0.25,
+    position = position_raincloud(width = 0.05, height = 0.15),
+    from = 0, to = 50,
+    jittered_points = TRUE,
+    point_size = 1) +
+  labs(
+    title = "Vastausten jakaumat", 
+    x = expression(paste("Min " %->% " Max")),
+    y = NULL) +
+  scale_y_discrete(expand = c(-1, 0.0)) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  ggridges::scale_fill_cyclical(
+      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+      name = "") +
+  ggridges::scale_colour_cyclical(values = "black") +
+  ggridges::theme_ridges(grid = FALSE) +
+  ggridges::scale_discrete_manual(aesthetics = "point_color", 
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_fill",
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_shape", 
+                                  values = rep(4, number_of_colours),
+                                  guide = "none") +
+  papaja::theme_apa() +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 5))
+
+
+linePlots <- plotData %>% 
+  ggplot(aes(x = Date, y = Value, group = Field)) +
+  geom_line(aes(colour = Field), size = 0.4) +
+  geom_point(aes(colour = Field), size = 0.8) +
+  facet_grid(rows = vars(Field)) +
+  scale_y_continuous(breaks = NULL, limits = c(0, 50), expand = c(-1, 0.0)) +
+  scale_x_datetime(labels = scales::date_format("%d/%m"), date_breaks = "2 days") +
+  labs(x = expression(paste("Start " %->% " Finish")), y = NULL) +
+  scale_colour_manual(breaks = plotData$Field, 
+                      # see https://stackoverflow.com/questions/49276734/r-alternating-colors-in-barchart:
+                      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours]) +
+  theme_minimal() +
+  theme(legend.position = "none", 
+        axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), # removes gridlines 
+        strip.background = element_blank(), strip.text = element_blank()) # removes facet labels
+
+densityPlots + linePlots
+
+```
+
+## Distributions by task {.tabset}
+
+```{r distributions-task, results = "asis", fig.show = "asis"}
+
+plotTasks <- analysisData$task %>% 
+  na.omit(.) %>% 
+  unique(.) %>% 
+  sort(.)
+
+for (i in plotTasks) {
+  
+plotData <- analysisData %>%
+  dplyr::filter(task == i) %>% 
+  dplyr::select(Kiinnostus, Mielihyvä, Tärkeys, Tilanne, Syyllisyys, `Joku toinen`,
+                `Sisäinen motivaatio`, `Ulkoinen motivaatio`,
+                Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, Perustarpeet,
+                `Oma kysymys`,
+                Unenlaatu, `Tyytyväisyys suoritukseen`, `Tyytyväisyys työpäivään`,
+                task, Projekti, Date) 
+
+# Transform to tidy data (1 observation per row)
+plotData <- plotData %>% 
+  tidyr::gather(Field, Value, -task, -Projekti, -Date) %>%
+  dplyr::mutate(Field = factor(Field, levels = colnames(plotData)[1:(ncol(plotData)-3)])) %>% 
+  dplyr::filter(!is.na(Value)) 
+
+number_of_colours <- length(unique(plotData$Field))
+
+densityPlots <- plotData %>% 
+  ggplot2::ggplot(aes(y = forcats::fct_rev(Field))) +
+  ggridges::geom_density_ridges2(
+    aes(x = Value, colour = "black", 
+        fill = Field,
+        point_color = Field,
+        point_fill = Field,
+        point_shape = Field),
+    scale = .75, alpha = 0.6, size = 0.25,
+    position = position_raincloud(width = 0.05, height = 0.15),
+    from = 0, to = 50,
+    jittered_points = TRUE,
+    point_size = 1) +
+  labs(
+    title = paste("Vastausten jakaumat tehtävässä", i), 
+    x = expression(paste("Min " %->% " Max")),
+    y = NULL) +
+  scale_y_discrete(expand = c(-1, 0.0)) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  ggridges::scale_fill_cyclical(
+      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+      name = "") +
+  ggridges::scale_colour_cyclical(values = "black") +
+  ggridges::theme_ridges(grid = FALSE) +
+  ggridges::scale_discrete_manual(aesthetics = "point_color", 
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_fill",
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_shape", 
+                                  values = rep(4, number_of_colours),
+                                  guide = "none") +
+  papaja::theme_apa() +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 5))
+
+
+linePlots <- plotData %>% 
+  ggplot(aes(x = Date, y = Value, group = Field)) +
+  geom_line(aes(colour = Field), size = 0.4) +
+  geom_point(aes(colour = Field), size = 0.8) +
+  facet_grid(rows = vars(Field)) +
+  scale_y_continuous(breaks = NULL, limits = c(0, 50), expand = c(-1, 0.0)) +
+  scale_x_datetime(labels = scales::date_format("%d/%m"), date_breaks = "2 days") +
+  labs(x = expression(paste("Start " %->% " Finish")), y = NULL) +
+  scale_colour_manual(breaks = plotData$Field, 
+                      # see https://stackoverflow.com/questions/49276734/r-alternating-colors-in-barchart:
+                      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours]) +
+  theme_minimal() +
+  theme(legend.position = "none", 
+        axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), # removes gridlines 
+        strip.background = element_blank(), strip.text = element_blank()) # removes facet labels
+
+cat('\n\n###', i, '\n\n  ')
+
+print(densityPlots + linePlots)
+
+}
+```
+
+<!-- ## Distributions by project {.tabset} -->
+
+```{r distributions-project, results = "asis", fig.show = "asis", eval = FALSE}
+
+for (i in unique(analysisData$Projekti)) {
+  
+plotData <- analysisData %>%
+  dplyr::filter(Projekti == i) %>% 
+  dplyr::select(Kiinnostus, Mielihyvä, Tärkeys, Tilanne, Syyllisyys, `Joku toinen`,
+                `Sisäinen motivaatio`, `Ulkoinen motivaatio`,
+                Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, Perustarpeet,
+                `Oma kysymys`,
+                Unenlaatu, `Tyytyväisyys suoritukseen`, `Tyytyväisyys työpäivään`,
+                Tehtävä, Projekti, Date) 
+
+# Transform to tidy data (1 observation per row)
+plotData <- plotData %>% 
+  tidyr::gather(Field, Value, -Tehtävä, -Projekti, -Date) %>%
+  dplyr::mutate(Field = factor(Field, levels = colnames(plotData)[1:(ncol(plotData)-3)])) %>% 
+  dplyr::filter(!is.na(Value)) 
+
+number_of_colours <- length(unique(plotData$Field))
+
+densityPlots <- plotData %>% 
+  ggplot2::ggplot(aes(y = forcats::fct_rev(Field))) +
+  ggridges::geom_density_ridges2(
+    aes(x = Value, colour = "black", 
+        fill = Field,
+        point_color = Field,
+        point_fill = Field,
+        point_shape = Field),
+    scale = .75, alpha = 0.6, size = 0.25,
+    position = position_raincloud(width = 0.05, height = 0.15),
+    from = 0, to = 50,
+    jittered_points = TRUE,
+    point_size = 1) +
+  labs(
+    title = paste("Vastausten jakaumat projektissa", i), 
+    x = expression(paste("Min " %->% " Max")),
+    y = NULL) +
+  scale_y_discrete(expand = c(-1, 0.0)) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  ggridges::scale_fill_cyclical(
+      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+      name = "") +
+  ggridges::scale_colour_cyclical(values = "black") +
+  ggridges::theme_ridges(grid = FALSE) +
+  ggridges::scale_discrete_manual(aesthetics = "point_color", 
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_fill",
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_shape", 
+                                  values = rep(4, number_of_colours),
+                                  guide = "none") +
+  papaja::theme_apa() +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 5))
+
+
+linePlots <- plotData %>% 
+  ggplot(aes(x = Date, y = Value, group = Field)) +
+  geom_line(aes(colour = Field), size = 0.4) +
+  geom_point(aes(colour = Field), size = 0.8) +
+  facet_grid(rows = vars(Field)) +
+  scale_y_continuous(breaks = NULL, limits = c(0, 50), expand = c(-1, 0.0)) +
+  scale_x_datetime(labels = scales::date_format("%d/%m"), date_breaks = "2 days") +
+  labs(x = expression(paste("Start " %->% " Finish")), y = NULL) +
+  scale_colour_manual(breaks = plotData$Field, 
+                      # see https://stackoverflow.com/questions/49276734/r-alternating-colors-in-barchart:
+                      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours]) +
+  theme_minimal() +
+  theme(legend.position = "none", 
+        axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), # removes gridlines 
+        strip.background = element_blank(), strip.text = element_blank()) # removes facet labels
+
+cat('\n\n###', i, '\n\n  ')
+
+print(densityPlots + linePlots)
+
+}
+```
+
+## Distributions by time since last break {.tabset}
+
+```{r distributions-time-since-break, results = "asis", fig.show = "asis"}
+levelsToPlot <- analysisData$`Aikaa tauosta` %>% 
+  na.omit(.) %>% 
+  unique(.) %>% 
+  sort(.)
+
+for (i in levelsToPlot) {
+  
+plotData <- analysisData %>%
+  dplyr::filter(`Aikaa tauosta` == i) %>% 
+  dplyr::select(Kiinnostus, Mielihyvä, Tärkeys, Tilanne, Syyllisyys, `Joku toinen`,
+                #`Sisäinen motivaatio`, `Ulkoinen motivaatio`,
+                Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, # Perustarpeet,
+                `Oma kysymys`,
+                Unenlaatu, `Tyytyväisyys suoritukseen`, `Tyytyväisyys työpäivään`,
+                Tehtävä, Projekti, Date) 
+
+# Transform to tidy data (1 observation per row)
+plotData <- plotData %>% 
+  tidyr::gather(Field, Value, -Tehtävä, -Projekti, -Date) %>%
+  dplyr::mutate(Field = factor(Field, levels = colnames(plotData)[1:(ncol(plotData)-3)])) %>% 
+  dplyr::filter(!is.na(Value)) 
+
+number_of_colours <- length(unique(plotData$Field))
+
+densityPlots <- plotData %>% 
+  ggplot2::ggplot(aes(y = forcats::fct_rev(Field))) +
+  ggridges::geom_density_ridges2(
+    aes(x = Value, colour = "black", 
+        fill = Field,
+        point_color = Field,
+        point_fill = Field,
+        point_shape = Field),
+    scale = .75, alpha = 0.6, size = 0.25,
+    position = position_raincloud(width = 0.05, height = 0.15),
+    from = 0, to = 50,
+    jittered_points = TRUE,
+    point_size = 1) +
+  labs(
+    title = paste("Vastausten jakaumat, kun tauosta aikaa (n. min):", i), 
+    x = expression(paste("Min " %->% " Max")),
+    y = NULL) +
+  scale_y_discrete(expand = c(-1, 0.0)) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  ggridges::scale_fill_cyclical(
+      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+      name = "") +
+  ggridges::scale_colour_cyclical(values = "black") +
+  ggridges::theme_ridges(grid = FALSE) +
+  ggridges::scale_discrete_manual(aesthetics = "point_color", 
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_fill",
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_shape", 
+                                  values = rep(4, number_of_colours),
+                                  guide = "none") +
+  papaja::theme_apa() +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 5)) #+
+  # geom_vline(aes(xintercept = 25), linetype = "dashed")
+
+
+linePlots <- plotData %>% 
+  ggplot(aes(x = Date, y = Value, group = Field)) +
+  geom_line(aes(colour = Field), size = 0.4) +
+  geom_point(aes(colour = Field), size = 0.8) +
+  facet_grid(rows = vars(Field)) +
+  scale_y_continuous(breaks = NULL, limits = c(0, 50), expand = c(-1, 0.0)) +
+  scale_x_datetime(labels = scales::date_format("%d/%m"), date_breaks = "2 days") +
+  labs(x = expression(paste("Start " %->% " Finish")), y = NULL) +
+  scale_colour_manual(breaks = plotData$Field, 
+                      # see https://stackoverflow.com/questions/49276734/r-alternating-colors-in-barchart:
+                      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours]) +
+  theme_minimal() +
+  theme(legend.position = "none", 
+        axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), # removes gridlines 
+        strip.background = element_blank(), strip.text = element_blank()) # removes facet labels
+
+cat('\n\n###', i, '\n\n  ')
+
+print(densityPlots + linePlots)
+
+}
+
+```
+
+
+## Distributions by location {.tabset}
+
+```{r distributions-location, results = "asis", fig.show = "asis"}
+levelsToPlot <- analysisData$`Olinpaikka` %>% 
+  na.omit(.) %>% 
+  unique(.) %>% 
+  sort(.)
+
+for (i in levelsToPlot) {
+  
+plotData <- analysisData %>%
+  dplyr::filter(`Olinpaikka` == i) %>% 
+  dplyr::select(Kiinnostus, Mielihyvä, Tärkeys, Tilanne, Syyllisyys, `Joku toinen`,
+                #`Sisäinen motivaatio`, `Ulkoinen motivaatio`,
+                Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, # Perustarpeet,
+                `Oma kysymys`,
+                Unenlaatu, `Tyytyväisyys suoritukseen`, `Tyytyväisyys työpäivään`,
+                Tehtävä, Projekti, Date) 
+
+# Transform to tidy data (1 observation per row)
+plotData <- plotData %>% 
+  tidyr::gather(Field, Value, -Tehtävä, -Projekti, -Date) %>%
+  dplyr::mutate(Field = factor(Field, levels = colnames(plotData)[1:(ncol(plotData)-3)])) %>% 
+  dplyr::filter(!is.na(Value)) 
+
+number_of_colours <- length(unique(plotData$Field))
+
+densityPlots <- plotData %>% 
+  ggplot2::ggplot(aes(y = forcats::fct_rev(Field))) +
+  ggridges::geom_density_ridges2(
+    aes(x = Value, colour = "black", 
+        fill = Field,
+        point_color = Field,
+        point_fill = Field,
+        point_shape = Field),
+    scale = .75, alpha = 0.6, size = 0.25,
+    position = position_raincloud(width = 0.05, height = 0.15),
+    from = 0, to = 50,
+    jittered_points = TRUE,
+    point_size = 1) +
+  labs(
+    title = paste("Vastausten jakaumat, kun olinpaikkana:", i), 
+    x = expression(paste("Min " %->% " Max")),
+    y = NULL) +
+  scale_y_discrete(expand = c(-1, 0.0)) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  ggridges::scale_fill_cyclical(
+      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+      name = "") +
+  ggridges::scale_colour_cyclical(values = "black") +
+  ggridges::theme_ridges(grid = FALSE) +
+  ggridges::scale_discrete_manual(aesthetics = "point_color", 
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_fill",
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_shape", 
+                                  values = rep(4, number_of_colours),
+                                  guide = "none") +
+  papaja::theme_apa() +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 5)) #+
+  # geom_vline(aes(xintercept = 25), linetype = "dashed")
+
+
+linePlots <- plotData %>% 
+  ggplot(aes(x = Date, y = Value, group = Field)) +
+  geom_line(aes(colour = Field), size = 0.4) +
+  geom_point(aes(colour = Field), size = 0.8) +
+  facet_grid(rows = vars(Field)) +
+  scale_y_continuous(breaks = NULL, limits = c(0, 50), expand = c(-1, 0.0)) +
+  scale_x_datetime(labels = scales::date_format("%d/%m"), date_breaks = "2 days") +
+  labs(x = expression(paste("Start " %->% " Finish")), y = NULL) +
+  scale_colour_manual(breaks = plotData$Field, 
+                      # see https://stackoverflow.com/questions/49276734/r-alternating-colors-in-barchart:
+                      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours]) +
+  theme_minimal() +
+  theme(legend.position = "none", 
+        axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), # removes gridlines 
+        strip.background = element_blank(), strip.text = element_blank()) # removes facet labels
+
+cat('\n\n###', i, '\n\n  ')
+
+print(densityPlots + linePlots)
+
+}
+
+```
+
+## Distributions by people present {.tabset}
+
+```{r distributions-people, results = "asis", fig.show = "asis"}
+levelsToPlot <- analysisData$`Muita paikalla` %>% 
+  na.omit(.) %>% 
+  unique(.) %>% 
+  sort(.)
+
+for (i in levelsToPlot) {
+  
+plotData <- analysisData %>%
+  dplyr::filter(`Muita paikalla` == i) %>% 
+  dplyr::select(Kiinnostus, Mielihyvä, Tärkeys, Tilanne, Syyllisyys, `Joku toinen`,
+                #`Sisäinen motivaatio`, `Ulkoinen motivaatio`,
+                Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, # Perustarpeet,
+                `Oma kysymys`,
+                Unenlaatu, `Tyytyväisyys suoritukseen`, `Tyytyväisyys työpäivään`,
+                Tehtävä, Projekti, Date) 
+
+# Transform to tidy data (1 observation per row)
+plotData <- plotData %>% 
+  tidyr::gather(Field, Value, -Tehtävä, -Projekti, -Date) %>%
+  dplyr::mutate(Field = factor(Field, levels = colnames(plotData)[1:(ncol(plotData)-3)])) %>% 
+  dplyr::filter(!is.na(Value)) 
+
+number_of_colours <- length(unique(plotData$Field))
+
+densityPlots <- plotData %>% 
+  ggplot2::ggplot(aes(y = forcats::fct_rev(Field))) +
+  ggridges::geom_density_ridges2(
+    aes(x = Value, colour = "black", 
+        fill = Field,
+        point_color = Field,
+        point_fill = Field,
+        point_shape = Field),
+    scale = .75, alpha = 0.6, size = 0.25,
+    position = position_raincloud(width = 0.05, height = 0.15),
+    from = 0, to = 50,
+    jittered_points = TRUE,
+    point_size = 1) +
+  labs(
+    title = if(i == "3") { 
+      paste0("Vastausten jakaumat, kun muita paikalla: ", i, "+") 
+    } else {
+      paste0("Vastausten jakaumat, kun muita paikalla: ", i)
+    },
+    x = expression(paste("Min " %->% " Max")),
+    y = NULL) +
+  scale_y_discrete(expand = c(-1, 0.0)) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  ggridges::scale_fill_cyclical(
+      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+      name = "") +
+  ggridges::scale_colour_cyclical(values = "black") +
+  ggridges::theme_ridges(grid = FALSE) +
+  ggridges::scale_discrete_manual(aesthetics = "point_color", 
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_fill",
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_shape", 
+                                  values = rep(4, number_of_colours),
+                                  guide = "none") +
+  papaja::theme_apa() +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 5)) #+
+  # geom_vline(aes(xintercept = 25), linetype = "dashed")
+
+
+linePlots <- plotData %>% 
+  ggplot(aes(x = Date, y = Value, group = Field)) +
+  geom_line(aes(colour = Field), size = 0.4) +
+  geom_point(aes(colour = Field), size = 0.8) +
+  facet_grid(rows = vars(Field)) +
+  scale_y_continuous(breaks = NULL, limits = c(0, 50), expand = c(-1, 0.0)) +
+  scale_x_datetime(labels = scales::date_format("%d/%m"), date_breaks = "2 days") +
+  labs(x = expression(paste("Start " %->% " Finish")), y = NULL) +
+  scale_colour_manual(breaks = plotData$Field, 
+                      # see https://stackoverflow.com/questions/49276734/r-alternating-colors-in-barchart:
+                      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours]) +
+  theme_minimal() +
+  theme(legend.position = "none", 
+        axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), # removes gridlines 
+        strip.background = element_blank(), strip.text = element_blank()) # removes facet labels
+
+cat('\n\n###', i, '\n\n  ')
+
+print(densityPlots + linePlots)
+
+}
+
+```
+
+## Distributions by tertile of satisfaction {.tabset}
+
+```{r distributions-satisfaction, results = "asis", fig.show = "asis"}
+tertiili <- c("alhainen", "keskimääräinen", "korkea")
+
+for (i in 1:3) {
+  
+plotData <- analysisData %>%
+  dplyr::mutate(satisfactionTertile = dplyr::ntile(`Tyytyväisyys työpäivään`, 3)) %>% 
+  dplyr::filter(`satisfactionTertile` == i) %>% 
+  dplyr::select(Kiinnostus, Mielihyvä, Tärkeys, Tilanne, Syyllisyys, `Joku toinen`,
+                #`Sisäinen motivaatio`, `Ulkoinen motivaatio`,
+                Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, # Perustarpeet,
+                `Oma kysymys`,
+                Unenlaatu, `Tyytyväisyys suoritukseen`, `Tyytyväisyys työpäivään`,
+                Tehtävä, Projekti, Date) 
+
+# Transform to tidy data (1 observation per row)
+plotData <- plotData %>% 
+  tidyr::gather(Field, Value, -Tehtävä, -Projekti, -Date) %>%
+  dplyr::mutate(Field = factor(Field, levels = colnames(plotData)[1:(ncol(plotData)-3)])) %>% 
+  dplyr::filter(!is.na(Value)) 
+
+number_of_colours <- length(unique(plotData$Field))
+
+densityPlots <- plotData %>% 
+  ggplot2::ggplot(aes(y = forcats::fct_rev(Field))) +
+  ggridges::geom_density_ridges2(
+    aes(x = Value, colour = "black", 
+        fill = Field,
+        point_color = Field,
+        point_fill = Field,
+        point_shape = Field),
+    scale = .75, alpha = 0.6, size = 0.25,
+    position = position_raincloud(width = 0.05, height = 0.15),
+    from = 0, to = 50,
+    jittered_points = TRUE,
+    point_size = 1) +
+  labs(
+    title = paste("Vastaukset, kun päivän lopuksi tyytyväisyys", tertiili[i]), 
+    x = expression(paste("Min " %->% " Max")),
+    y = NULL) +
+  scale_y_discrete(expand = c(-1, 0.0)) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  ggridges::scale_fill_cyclical(
+      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+      name = "") +
+  ggridges::scale_colour_cyclical(values = "black") +
+  ggridges::theme_ridges(grid = FALSE) +
+  ggridges::scale_discrete_manual(aesthetics = "point_color", 
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_fill",
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_shape", 
+                                  values = rep(4, number_of_colours),
+                                  guide = "none") +
+  papaja::theme_apa() +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 5)) #+
+  # geom_vline(aes(xintercept = 25), linetype = "dashed")
+
+
+linePlots <- plotData %>% 
+  ggplot(aes(x = Date, y = Value, group = Field)) +
+  geom_line(aes(colour = Field), size = 0.4) +
+  geom_point(aes(colour = Field), size = 0.8) +
+  facet_grid(rows = vars(Field)) +
+  scale_y_continuous(breaks = NULL, limits = c(0, 50), expand = c(-1, 0.0)) +
+  scale_x_datetime(labels = scales::date_format("%d/%m"), date_breaks = "2 days") +
+  labs(x = expression(paste("Start " %->% " Finish")), y = NULL) +
+  scale_colour_manual(breaks = plotData$Field, 
+                      # see https://stackoverflow.com/questions/49276734/r-alternating-colors-in-barchart:
+                      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours]) +
+  theme_minimal() +
+  theme(legend.position = "none", 
+        axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), # removes gridlines 
+        strip.background = element_blank(), strip.text = element_blank()) # removes facet labels
+
+cat('\n\n###', i, '\n\n  ')
+
+print(densityPlots + linePlots)
+
+}
+
+```
+
+## Distributions by tertile of sleep {.tabset}
+
+```{r distributions-sleep, results = "asis", fig.show = "asis"}
+tertiili <- c("alhainen", "keskimääräinen", "korkea")
+
+for (i in 1:3) {
+  
+plotData <- analysisData %>%
+  dplyr::mutate(sleepTertile = dplyr::ntile(`Unenlaatu`, 3)) %>% 
+  dplyr::filter(`sleepTertile` == i) %>% 
+  dplyr::select(Kiinnostus, Mielihyvä, Tärkeys, Tilanne, Syyllisyys, `Joku toinen`,
+                #`Sisäinen motivaatio`, `Ulkoinen motivaatio`,
+                Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, # Perustarpeet,
+                `Oma kysymys`,
+                Unenlaatu, `Tyytyväisyys suoritukseen`, `Tyytyväisyys työpäivään`,
+                Tehtävä, Projekti, Date) 
+
+# Transform to tidy data (1 observation per row)
+plotData <- plotData %>% 
+  tidyr::gather(Field, Value, -Tehtävä, -Projekti, -Date) %>%
+  dplyr::mutate(Field = factor(Field, levels = colnames(plotData)[1:(ncol(plotData)-3)])) %>% 
+  dplyr::filter(!is.na(Value)) 
+
+number_of_colours <- length(unique(plotData$Field))
+
+densityPlots <- plotData %>% 
+  ggplot2::ggplot(aes(y = forcats::fct_rev(Field))) +
+  ggridges::geom_density_ridges2(
+    aes(x = Value, colour = "black", 
+        fill = Field,
+        point_color = Field,
+        point_fill = Field,
+        point_shape = Field),
+    scale = .75, alpha = 0.6, size = 0.25,
+    position = position_raincloud(width = 0.05, height = 0.15),
+    from = 0, to = 50,
+    jittered_points = TRUE,
+    point_size = 1) +
+  labs(
+    title = paste("Vastaukset, kun päivän aluksi unenlaatu", tertiili[i]), 
+    x = expression(paste("Min " %->% " Max")),
+    y = NULL) +
+  scale_y_discrete(expand = c(-1, 0.0)) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  ggridges::scale_fill_cyclical(
+      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+      name = "") +
+  ggridges::scale_colour_cyclical(values = "black") +
+  ggridges::theme_ridges(grid = FALSE) +
+  ggridges::scale_discrete_manual(aesthetics = "point_color", 
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_fill",
+                                  values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours],
+                                  guide = "none") +
+  ggridges::scale_discrete_manual(aesthetics = "point_shape", 
+                                  values = rep(4, number_of_colours),
+                                  guide = "none") +
+  papaja::theme_apa() +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 5)) #+
+  # geom_vline(aes(xintercept = 25), linetype = "dashed")
+
+
+linePlots <- plotData %>% 
+  ggplot(aes(x = Date, y = Value, group = Field)) +
+  geom_line(aes(colour = Field), size = 0.4) +
+  geom_point(aes(colour = Field), size = 0.8) +
+  facet_grid(rows = vars(Field)) +
+  scale_y_continuous(breaks = NULL, limits = c(0, 50), expand = c(-1, 0.0)) +
+  scale_x_datetime(labels = scales::date_format("%d/%m"), date_breaks = "2 days") +
+  labs(x = expression(paste("Start " %->% " Finish")), y = NULL) +
+  scale_colour_manual(breaks = plotData$Field, 
+                      # see https://stackoverflow.com/questions/49276734/r-alternating-colors-in-barchart:
+                      values = rep(c(viridis::viridis(4, end = 0.8)[2], 
+                                     viridis::viridis(4, end = 0.8)[4]), 
+                                   ceiling(number_of_colours/2))[1:number_of_colours]) +
+  theme_minimal() +
+  theme(legend.position = "none", 
+        axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), # removes gridlines 
+        strip.background = element_blank(), strip.text = element_blank()) # removes facet labels
+
+cat('\n\n###', i, '\n\n  ')
+
+print(densityPlots + linePlots)
+
+}
+
+```
+
+## Correlations
+
+```{r correlations}
+
+# Create a covariance matrix of the data
+covMatrix <- analysisData %>%
+  dplyr::select_if(is.numeric) %>%
+  dplyr::select(Kiinnostus, Mielihyvä, Tärkeys, Tilanne, Syyllisyys, `Joku toinen`,
+                Kyvykkyys, Vapaaehtoisuus, Yhteenkuuluvuus, 
+                Unenlaatu, `Tyytyväisyys suoritukseen`, `Tyytyväisyys työpäivään`) %>%
+  cov(use = "pairwise.complete.obs") 
+
+# Transform the covariances into correlations, and make the other diagonal represent partial correlations 
+
+corLower_parcorUpper <- function (x, cormethod) {
+  if (is.data.frame(x)) 
+    r <- cor(x, method = cormethod)
+  else {
+    Dg <- 1/sqrt(diag(x))
+    r <- x * outer(Dg, Dg)
+  }
+  rp <- ggm::parcor(r)
+  r[upper.tri(r)] <- rp[upper.tri(rp)]
+  r
+}
+
+matrix_corLower_parcorUpper <- covMatrix %>% corLower_parcorUpper(cormethod = "kendall")
+
+
+# Transform matrix into tidy form (1 observation per row) and create plot
+# See: https://stackoverflow.com/questions/14290364/heatmap-with-values-ggplot2  
+matrix_corLower_parcorUpper %>% 
+  tbl_df() %>%
+  dplyr::mutate(Var1 = colnames(matrix_corLower_parcorUpper)) %>%
+  tidyr::gather(Var2, value, -Var1) %>%
+  dplyr::mutate(Var1 = factor(Var1, levels = colnames(matrix_corLower_parcorUpper)),
+                Var2 = factor(Var2, levels = colnames(matrix_corLower_parcorUpper))) %>% 
+  ggplot(aes(Var1, Var2)) +
+  geom_tile(aes(fill = value)) + 
+  geom_text(aes(label = round(value, 2)), size = 2) +
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white") +
+  # scale_fill_viridis_c(option = "B", begin = 0.2) +
+  labs(x = "Kendall correlations", y = "Partial correlations") +
+  theme(axis.text.x = element_text(angle = -25, hjust = 0),
+        legend.position = "none") 
+
+### Corrgram interpreted the matrix as symmetric, for some reason
+# covMatrix %>% 
+#   corrgram::corrgram(
+#   type = "cor",
+#   lower.panel = corrgram::panel.pie,
+#   upper.panel = corrgram::panel.pie,
+#   order = TRUE,
+#   outer.labels = list(bottom = list(labels = colnames(covMatrix), cex = 0.75, srt = 30),
+#                       left = list(labels = colnames(covMatrix), cex = 0.75, srt = 30)),
+#   labels = colnames(covMatrix),
+#   main = "Yhteyksien voimakkuudet")
+
+### Another option, but tweaking the size was difficult:
+# col<- colorRampPalette(c("blue", "white", "red"))(20)
+# matrix_corLower_parcorUpper %>% 
+#   gplots::heatmap.2(col = col, symm = FALSE, Rowv = NA, Colv = NA, revC = TRUE, margins = c(12, 9),
+#                     trace = "none", 
+#                     cellnote = matrix_corLower_parcorUpper %>% round(., 3), 
+#                     notecex = 0.5,
+#                     notecol = "black",
+#                     key = FALSE)
+
+```
+
+# Calendar (raw data)
+
+```{r calendar, results = "asis"}
+
+analysisData %>% 
+  dplyr::select(Date, project_name, task, Tekniikat, Tehtävä, Projekti, everything(), 
+                -User, -Serie, -Unit, -day, -contains("additional_yes_no"), -howami_participation_started) %>% 
+  dplyr::mutate_all(funs(as.character(.))) %>% 
+  dplyr::mutate_all(funs(replace(., is.na(.), as.character("-")))) %>% 
+  DT::datatable()
+```
+
